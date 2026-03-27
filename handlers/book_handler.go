@@ -1,36 +1,31 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 
-	"bookstore/models"
+	"bookstore2/models"
+
+	"github.com/gin-gonic/gin"
 )
 
 var books []models.Book
 var bookID = 1
 
-func GetBooks(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-
-	category := query.Get("category")
-	pageStr := query.Get("page")
+func GetBooks(c *gin.Context) {
+	category := c.Query("category")
+	pageStr := c.Query("page")
 
 	page := 1
 	limit := 5
 
-	if pageStr != "" {
-		p, err := strconv.Atoi(pageStr)
-		if err == nil && p > 0 {
-			page = p
-		}
+	if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+		page = p
 	}
 
 	filtered := []models.Book{}
 	for _, b := range books {
-		if category == "" || strings.EqualFold(strconv.Itoa(b.CategoryID), category) {
+		if category == "" || strconv.Itoa(b.CategoryID) == category {
 			filtered = append(filtered, b)
 		}
 	}
@@ -45,34 +40,18 @@ func GetBooks(w http.ResponseWriter, r *http.Request) {
 		end = len(filtered)
 	}
 
-	json.NewEncoder(w).Encode(filtered[start:end])
+	c.JSON(http.StatusOK, filtered[start:end])
 }
-
-func GetBookByID(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/books/")
-	id, _ := strconv.Atoi(idStr)
-
-	for _, b := range books {
-		if b.ID == id {
-			json.NewEncoder(w).Encode(b)
-			return
-		}
-	}
-
-	http.Error(w, "Book not found", http.StatusNotFound)
-}
-
-func CreateBook(w http.ResponseWriter, r *http.Request) {
+func CreateBook(c *gin.Context) {
 	var book models.Book
 
-	err := json.NewDecoder(r.Body).Decode(&book)
-	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+	if err := c.ShouldBindJSON(&book); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
 		return
 	}
 
 	if book.Title == "" || book.Price <= 0 {
-		http.Error(w, "Invalid input data", http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
 		return
 	}
 
@@ -80,16 +59,25 @@ func CreateBook(w http.ResponseWriter, r *http.Request) {
 	bookID++
 	books = append(books, book)
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(book)
+	c.JSON(http.StatusCreated, book)
 }
+func GetBookByID(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
 
-func UpdateBook(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/books/")
-	id, _ := strconv.Atoi(idStr)
+	for _, b := range books {
+		if b.ID == id {
+			c.JSON(http.StatusOK, b)
+			return
+		}
+	}
+
+	c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
+}
+func UpdateBook(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
 
 	var updated models.Book
-	json.NewDecoder(r.Body).Decode(&updated)
+	c.ShouldBindJSON(&updated)
 
 	for i, b := range books {
 		if b.ID == id {
@@ -101,25 +89,23 @@ func UpdateBook(w http.ResponseWriter, r *http.Request) {
 			}
 
 			books[i] = b
-			json.NewEncoder(w).Encode(b)
+			c.JSON(http.StatusOK, b)
 			return
 		}
 	}
 
-	http.Error(w, "Book not found", http.StatusNotFound)
+	c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 }
-
-func DeleteBook(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/books/")
-	id, _ := strconv.Atoi(idStr)
+func DeleteBook(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
 
 	for i, b := range books {
 		if b.ID == id {
 			books = append(books[:i], books[i+1:]...)
-			w.WriteHeader(http.StatusNoContent)
+			c.Status(http.StatusNoContent)
 			return
 		}
 	}
 
-	http.Error(w, "Book not found", http.StatusNotFound)
+	c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
 }
