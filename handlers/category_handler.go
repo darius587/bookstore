@@ -3,29 +3,28 @@ package handlers
 import (
 	"net/http"
 
+	"bookstore2/db"
 	"bookstore2/models"
 
 	"github.com/gin-gonic/gin"
 )
 
-var categories []models.Category
-var categoryID = 1
-
-func GetCategories(c *gin.Context) {
-	c.JSON(http.StatusOK, categories)
-}
-
 func CreateCategory(c *gin.Context) {
 	var category models.Category
 
-	if err := c.ShouldBindJSON(&category); err != nil || category.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
+	if err := c.ShouldBindJSON(&category); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 
-	category.ID = categoryID
-	categoryID++
-	categories = append(categories, category)
-
+	db.DB.Create(&category)
 	c.JSON(http.StatusCreated, category)
+}
+
+func GetCategories(c *gin.Context) {
+	var categories []models.Category
+
+	db.DB.Find(&categories)
+
+	c.JSON(http.StatusOK, categories)
 }

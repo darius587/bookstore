@@ -4,108 +4,79 @@ import (
 	"net/http"
 	"strconv"
 
+	"bookstore2/db"
 	"bookstore2/models"
 
 	"github.com/gin-gonic/gin"
 )
 
-var books []models.Book
-var bookID = 1
-
-func GetBooks(c *gin.Context) {
-	category := c.Query("category")
-	pageStr := c.Query("page")
-
-	page := 1
-	limit := 5
-
-	if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-		page = p
-	}
-
-	filtered := []models.Book{}
-	for _, b := range books {
-		if category == "" || strconv.Itoa(b.CategoryID) == category {
-			filtered = append(filtered, b)
-		}
-	}
-
-	start := (page - 1) * limit
-	end := start + limit
-
-	if start > len(filtered) {
-		start = len(filtered)
-	}
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-
-	c.JSON(http.StatusOK, filtered[start:end])
-}
 func CreateBook(c *gin.Context) {
 	var book models.Book
 
 	if err := c.ShouldBindJSON(&book); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
 
-	if book.Title == "" || book.Price <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
-		return
-	}
-
-	book.ID = bookID
-	bookID++
-	books = append(books, book)
-
+	db.DB.Create(&book)
 	c.JSON(http.StatusCreated, book)
 }
-func GetBookByID(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
 
-	for _, b := range books {
-		if b.ID == id {
-			c.JSON(http.StatusOK, b)
-			return
-		}
+func GetBooks(c *gin.Context) {
+	var books []models.Book
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit := 5
+	offset := (page - 1) * limit
+
+	query := db.DB
+
+	if category := c.Query("category"); category != "" {
+		query = query.Where("category_id = ?", category)
 	}
 
-	c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
+	query.Offset(offset).Limit(limit).Find(&books)
+
+	c.JSON(http.StatusOK, books)
 }
+
+func GetBookByID(c *gin.Context) {
+	var book models.Book
+
+	if err := db.DB.First(&book, c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, book)
+}
+
 func UpdateBook(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
+	var book models.Book
+
+	if err := db.DB.First(&book, c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
 
 	var updated models.Book
-	c.ShouldBindJSON(&updated)
-
-	for i, b := range books {
-		if b.ID == id {
-			if updated.Title != "" {
-				b.Title = updated.Title
-			}
-			if updated.Price > 0 {
-				b.Price = updated.Price
-			}
-
-			books[i] = b
-			c.JSON(http.StatusOK, b)
-			return
-		}
+	if err := c.ShouldBindJSON(&updated); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		return
 	}
 
-	c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
+	db.DB.Model(&book).Updates(updated)
+
+	c.JSON(http.StatusOK, book)
 }
-func DeleteBook(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
 
-	for i, b := range books {
-		if b.ID == id {
-			books = append(books[:i], books[i+1:]...)
-			c.Status(http.StatusNoContent)
-			return
-		}
+func DeleteBook(c *gin.Context) {
+	res := db.DB.Delete(&models.Book{}, c.Param("id"))
+
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
 	}
 
-	c.JSON(http.StatusNotFound, gin.H{"error": "Book not found"})
+	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
